@@ -1,0 +1,20 @@
+# Python virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Secrets file
+.env
+
+# Telethon session file
+session/
+*.session
+
+# Collected data (IMPORTANT!)
+data/
+
+# IDE settings
+.idea/
+.vscode/

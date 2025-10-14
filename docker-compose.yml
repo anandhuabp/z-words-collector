@@ -1,0 +1,8 @@
+services:
+  parser:
+    build: .
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./session:/app/session
