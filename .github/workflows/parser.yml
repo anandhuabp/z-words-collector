@@ -39,9 +39,13 @@ jobs:
         run: mkdir -p session
 
       - name: Restore Telegram session
-        if: secrets.TELEGRAM_SESSION
         run: |
-          echo "${{ secrets.TELEGRAM_SESSION }}" | base64 -d > session/z_worlds_collector_session.session
+          if [ -n "${{ secrets.TELEGRAM_SESSION }}" ]; then
+            echo "${{ secrets.TELEGRAM_SESSION }}" | base64 -d > session/z_worlds_collector_session.session
+            echo "Session restored successfully"
+          else
+            echo "No session found in secrets, will require login code"
+          fi
         continue-on-error: true
 
       - name: Create .env file
