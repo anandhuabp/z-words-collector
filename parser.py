@@ -2,6 +2,7 @@ import os
 import json
 import gzip
 import logging
+from logging.handlers import RotatingFileHandler
 from datetime import datetime, date
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -29,27 +30,99 @@ class DateTimeEncoder(json.JSONEncoder):
 
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
+# Paths configuration
+SESSION_PATH = Path('session/z_worlds_collector_session.session')
+DATA_PATH = Path('data')
+LOGS_PATH = Path('logs')
 
+# Create directories
+SESSION_PATH.parent.mkdir(exist_ok=True)
+DATA_PATH.mkdir(exist_ok=True)
+LOGS_PATH.mkdir(exist_ok=True)
+
+# Configure logging with rotation
+def setup_logging():
+    """Setup enhanced logging with rotation and per-channel support"""
+    # Create formatter with detailed information
+    log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    date_format = '%Y-%m-%d %H:%M:%S'
+    formatter = logging.Formatter(log_format, datefmt=date_format)
+
+    # Root logger configuration
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+
+    # Console handler (stdout)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+
+    # Main rotating file handler (10MB per file, keep 5 backups)
+    main_log_file = LOGS_PATH / 'parser.log'
+    file_handler = RotatingFileHandler(
+        main_log_file,
+        maxBytes=10 * 1024 * 1024,  # 10 MB
+        backupCount=5,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+
+    # Add handlers to root logger
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+
+    return logging.getLogger(__name__)
+
+
+def get_channel_logger(channel_username: str) -> logging.Logger:
+    """
+    Get or create a logger for a specific channel with its own log file.
+
+    Args:
+        channel_username: Channel username
+
+    Returns:
+        Logger instance for the channel
+    """
+    logger_name = f"channel.{channel_username}"
+    channel_logger = logging.getLogger(logger_name)
+
+    # Check if logger already has handlers
+    if channel_logger.handlers:
+        return channel_logger
+
+    channel_logger.setLevel(logging.INFO)
+
+    # Create channel-specific log file with rotation
+    channel_log_file = LOGS_PATH / f'{channel_username}.log'
+    channel_handler = RotatingFileHandler(
+        channel_log_file,
+        maxBytes=5 * 1024 * 1024,  # 5 MB per channel log
+        backupCount=3,
+        encoding='utf-8'
+    )
+
+    log_format = '%(asctime)s - %(levelname)s - %(message)s'
+    formatter = logging.Formatter(log_format, datefmt='%Y-%m-%d %H:%M:%S')
+    channel_handler.setFormatter(formatter)
+
+    channel_logger.addHandler(channel_handler)
+    # Prevent propagation to avoid duplicate console output
+    channel_logger.propagate = True
+
+    return channel_logger
+
+
+# Setup logging
+logger = setup_logging()
+
+# Environment variables
 API_ID = os.getenv('API_ID')
 API_HASH = os.getenv('API_HASH')
 PHONE_NUMBER = os.getenv('PHONE_NUMBER')
 TARGET_CHANNELS = os.getenv('TARGET_CHANNELS').split(',')
 INITIAL_FETCH_LIMIT = int(os.getenv('INITIAL_FETCH_LIMIT', '5000'))
-
-SESSION_PATH = Path('session/z_worlds_collector_session.session')
-DATA_PATH = Path('data')
-
-SESSION_PATH.parent.mkdir(exist_ok=True)
-DATA_PATH.mkdir(exist_ok=True)
 
 client = TelegramClient(str(SESSION_PATH), API_ID, API_HASH)
 
@@ -304,7 +377,12 @@ async def fetch_messages_batch(channel_username: str, min_id: int = None, max_id
 
 async def fetch_channel(channel_username: str) -> None:
     """Fetch and store messages from a Telegram channel"""
+    # Get channel-specific logger
+    channel_logger = get_channel_logger(channel_username)
+
     logger.info(f"[{channel_username}] Starting data collection...")
+    channel_logger.info("Starting data collection...")
+
     channel_path = DATA_PATH / channel_username
     channel_path.mkdir(exist_ok=True)
 

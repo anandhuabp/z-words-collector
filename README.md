@@ -6,8 +6,12 @@ An automated data pipeline for collecting, archiving, and analyzing posts from R
 
 - 📥 Automated Telegram channel data collection
 - 💾 Incremental updates (fetches only new messages)
+- 🔄 Automatic backfill (downloads older messages gradually)
 - 🗜️ Data compression with gzip (5-10x space savings)
 - 📊 Metadata tracking (views, forwards, reactions)
+- 🔍 Gap detection (tracks deleted messages)
+- 🔁 Exponential backoff with FloodWaitError handling
+- 📝 Rotating logs with per-channel files
 - 🔄 Duplicate detection by message ID
 - 🐳 Docker support for easy deployment
 
@@ -193,6 +197,11 @@ z-words-collector/
 │       ├── index.json             # Channel metadata
 │       └── YYYY-MM-DD.json.gz     # Daily data files
 │
+├── logs/                  # Log files (auto-created)
+│   ├── parser.log                 # Main log file
+│   ├── parser.log.1               # Rotated backup logs
+│   └── channel_name.log           # Per-channel logs
+│
 └── local_docs/            # Project documentation
 ```
 
@@ -225,6 +234,102 @@ with gzip.open('data/channel1/2025-10-15.json.gz', 'rt', encoding='utf-8') as f:
     messages = data['messages']
     for msg in messages:
         print(f"ID: {msg['id']}, Text: {msg['text']}")
+```
+
+## Logging
+
+The parser uses **automatic log rotation** to prevent log files from consuming too much disk space.
+
+### Log Files Structure
+
+- **`logs/parser.log`** - Main log with all events from all channels
+- **`logs/parser.log.1`** to **`logs/parser.log.5`** - Rotated backup logs
+- **`logs/channel_name.log`** - Per-channel log files (e.g., `dva_majors.log`)
+
+### Automatic Rotation
+
+**Main log (`parser.log`):**
+- Maximum size: 10 MB per file
+- Backup files: 5
+- Total max size: ~60 MB (10MB × 6 files)
+
+**Per-channel logs:**
+- Maximum size: 5 MB per file
+- Backup files: 3
+- Total max size per channel: ~20 MB (5MB × 4 files)
+
+When a log file reaches its size limit, it's automatically rotated:
+```
+parser.log → parser.log.1 → parser.log.2 → ... → parser.log.5 (deleted)
+```
+
+### Log Format
+
+**Main log:**
+```
+2025-10-15 22:53:07 - __main__ - INFO - [channel1] Starting data collection...
+2025-10-15 22:53:08 - __main__ - INFO - [channel1] Progress: 500/1000 messages
+```
+
+**Channel-specific log:**
+```
+2025-10-15 22:53:07 - INFO - Starting data collection...
+2025-10-15 22:53:08 - INFO - Progress: 500/1000 messages
+```
+
+### Log Levels
+
+- **INFO** - Normal operations (progress, statistics, saved data)
+- **WARNING** - Non-critical issues (FloodWaitError, corrupted files)
+- **ERROR** - Critical errors (exceptions, failed operations)
+
+### Viewing Logs
+
+**Console output:**
+```bash
+python parser.py
+```
+Shows real-time logs in terminal
+
+**Main log file:**
+```bash
+# Windows
+type logs\parser.log
+
+# Linux/macOS
+cat logs/parser.log
+tail -f logs/parser.log  # Follow in real-time
+```
+
+**Channel-specific log:**
+```bash
+# View specific channel log
+cat logs/dva_majors.log
+```
+
+### What Gets Logged
+
+- Collection start/end for each channel
+- Total posts in channel
+- Download progress (every 500 messages)
+- New/backfill messages count
+- Gap detection results (deleted messages)
+- FloodWaitError handling and retries
+- File save operations
+- Final statistics (progress percentage, deleted messages)
+
+### Changing Log Settings
+
+To modify rotation settings, edit `parser.py`:
+
+```python
+# Main log: lines 62-66
+maxBytes=10 * 1024 * 1024,  # Change to 50 * 1024 * 1024 for 50MB
+backupCount=5                # Change to 10 for more backups
+
+# Channel logs: lines 99-103
+maxBytes=5 * 1024 * 1024,   # Change to 10 * 1024 * 1024 for 10MB
+backupCount=3                # Change to 5 for more backups
 ```
 
 ## Troubleshooting
