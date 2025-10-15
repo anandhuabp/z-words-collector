@@ -1,1 +1,3 @@
 telethon
+python-dotenv
+tenacity

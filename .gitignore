@@ -18,3 +18,9 @@ data/
 # IDE settings
 .idea/
 .vscode/
+
+# Log files
+*.log
+
+# Documentation files
+local_docs/
