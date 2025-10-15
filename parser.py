@@ -66,7 +66,12 @@ def load_index(channel_path: Path) -> Dict[str, Any]:
         'first_post_date': None,
         'last_post_date': None,
         'last_updated': None,
-        'data_files': []
+        'data_files': [],
+        'deleted_messages': {
+            'ids': [],  # List of detected deleted message IDs
+            'count': 0,  # Total count of deleted messages
+            'last_check': None  # Timestamp of last gap detection check
+        }
     }
 
 
@@ -87,6 +92,48 @@ def save_gzip_json(filepath: Path, data: Dict[str, Any]) -> None:
     """Save data to .json.gz file"""
     with gzip.open(filepath, 'wt', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2, cls=DateTimeEncoder)
+
+
+def detect_gaps(channel_path: Path, index: Dict[str, Any]) -> List[int]:
+    """
+    Detect missing message IDs (deleted messages) by checking gaps in the sequence.
+
+    Returns:
+        List of newly detected deleted message IDs
+    """
+    min_known_id = index.get('min_known_id')
+    last_known_id = index.get('last_known_id')
+
+    # Can't detect gaps if we don't have a range yet
+    if not min_known_id or not last_known_id or min_known_id >= last_known_id:
+        return []
+
+    # Collect all message IDs we have
+    existing_ids = set()
+
+    # Read all data files to collect existing IDs
+    for file_info in index.get('data_files', []):
+        filepath = channel_path / file_info['filename']
+        if filepath.exists():
+            try:
+                data = load_gzip_json(filepath)
+                messages = data.get('messages', []) if isinstance(data, dict) else data
+                for msg in messages:
+                    existing_ids.add(msg['id'])
+            except Exception as e:
+                logger.warning(f"Failed to read {filepath} for gap detection: {e}")
+
+    # Find gaps in the sequence
+    expected_ids = set(range(min_known_id, last_known_id + 1))
+    missing_ids = expected_ids - existing_ids
+
+    # Get previously known deleted IDs
+    known_deleted = set(index.get('deleted_messages', {}).get('ids', []))
+
+    # Find new deleted IDs
+    new_deleted_ids = sorted(missing_ids - known_deleted)
+
+    return new_deleted_ids
 
 
 async def fetch_messages_batch(channel_username: str, min_id: int = None, max_id: int = None, limit: int = None) -> List[Dict[str, Any]]:
@@ -304,6 +351,39 @@ async def fetch_channel(channel_username: str) -> None:
         index['data_files'][existing_file_index] = file_info
     else:
         index['data_files'].append(file_info)
+
+    # Detect gaps (deleted messages)
+    logger.info(f"[{channel_username}] Running gap detection...")
+    new_deleted_ids = detect_gaps(channel_path, index)
+
+    if new_deleted_ids:
+        # Ensure deleted_messages structure exists
+        if 'deleted_messages' not in index:
+            index['deleted_messages'] = {'ids': [], 'count': 0, 'last_check': None}
+
+        # Add newly detected deleted IDs
+        index['deleted_messages']['ids'].extend(new_deleted_ids)
+        index['deleted_messages']['count'] = len(index['deleted_messages']['ids'])
+        index['deleted_messages']['last_check'] = datetime.now().isoformat()
+
+        logger.info(f"[{channel_username}] Detected {len(new_deleted_ids)} newly deleted messages")
+        if len(new_deleted_ids) <= 10:
+            logger.info(f"[{channel_username}] Deleted IDs: {new_deleted_ids}")
+        else:
+            logger.info(f"[{channel_username}] Deleted IDs sample: {new_deleted_ids[:10]}... (showing first 10)")
+    else:
+        logger.info(f"[{channel_username}] No new gaps detected")
+
+        # Update last_check even if no new gaps found
+        if 'deleted_messages' not in index:
+            index['deleted_messages'] = {'ids': [], 'count': 0, 'last_check': None}
+        index['deleted_messages']['last_check'] = datetime.now().isoformat()
+
+    # Show total deleted messages statistics
+    total_deleted = index['deleted_messages']['count']
+    if total_deleted > 0:
+        deleted_pct = (total_deleted / (index['total_posts_archived'] + total_deleted)) * 100
+        logger.info(f"[{channel_username}] Total deleted messages: {total_deleted} ({deleted_pct:.2f}% of all posts)")
 
     # Save updated index
     save_index(channel_path, index)
