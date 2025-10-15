@@ -39,7 +39,7 @@ jobs:
         run: mkdir -p session
 
       - name: Restore Telegram session
-        if: ${{ secrets.TELEGRAM_SESSION != '' }}
+        if: secrets.TELEGRAM_SESSION
         run: |
           echo "${{ secrets.TELEGRAM_SESSION }}" | base64 -d > session/z_worlds_collector_session.session
         continue-on-error: true
