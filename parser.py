@@ -9,6 +9,13 @@ from dotenv import load_dotenv
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 import asyncio
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    before_sleep_log
+)
 
 
 class DateTimeEncoder(json.JSONEncoder):
@@ -136,10 +143,28 @@ def detect_gaps(channel_path: Path, index: Dict[str, Any]) -> List[int]:
     return new_deleted_ids
 
 
-async def fetch_messages_batch(channel_username: str, min_id: int = None, max_id: int = None, limit: int = None) -> List[Dict[str, Any]]:
-    """Fetch a batch of messages and convert them to dict format"""
+async def fetch_messages_batch(channel_username: str, min_id: int = None, max_id: int = None, limit: int = None, retry_count: int = 0) -> List[Dict[str, Any]]:
+    """
+    Fetch a batch of messages and convert them to dict format.
+
+    Implements exponential backoff with FloodWaitError handling:
+    - Respects Telegram's wait time from FloodWaitError
+    - Saves partial progress before retry
+    - Maximum 3 retry attempts
+
+    Args:
+        channel_username: Channel to fetch from
+        min_id: Minimum message ID (exclusive)
+        max_id: Maximum message ID (exclusive)
+        limit: Maximum number of messages to fetch
+        retry_count: Current retry attempt (internal use)
+
+    Returns:
+        List of message dictionaries
+    """
     messages_data = []
     message_count = 0
+    max_retries = 3
 
     # Build kwargs only with non-None values
     kwargs = {}
@@ -193,10 +218,85 @@ async def fetch_messages_batch(channel_username: str, min_id: int = None, max_id
                     logger.info(f"[{channel_username}] Progress: {message_count} messages downloaded...")
 
     except FloodWaitError as e:
-        logger.warning(f"[{channel_username}] Rate limit hit. Need to wait {e.seconds} seconds.")
-        raise
+        # Telegram rate limit hit - need to wait
+        wait_seconds = e.seconds
+
+        if messages_data:
+            logger.warning(
+                f"[{channel_username}] FloodWaitError: Rate limit hit after {len(messages_data)} messages. "
+                f"Telegram requires waiting {wait_seconds} seconds."
+            )
+        else:
+            logger.warning(
+                f"[{channel_username}] FloodWaitError: Rate limit hit immediately. "
+                f"Telegram requires waiting {wait_seconds} seconds."
+            )
+
+        # Check if we can retry
+        if retry_count >= max_retries:
+            logger.error(
+                f"[{channel_username}] Maximum retry attempts ({max_retries}) reached. "
+                f"Returning {len(messages_data)} partial messages."
+            )
+            return messages_data
+
+        # Wait as Telegram requested, with exponential backoff multiplier
+        backoff_multiplier = 1.5 ** retry_count  # 1x, 1.5x, 2.25x
+        actual_wait = wait_seconds * backoff_multiplier
+
+        logger.info(
+            f"[{channel_username}] Retry attempt {retry_count + 1}/{max_retries}. "
+            f"Waiting {actual_wait:.1f} seconds (Telegram: {wait_seconds}s + backoff)..."
+        )
+
+        await asyncio.sleep(actual_wait)
+
+        logger.info(f"[{channel_username}] Resuming after wait. Collected {len(messages_data)} messages so far.")
+
+        # If we already collected some messages, adjust min_id/max_id to continue from where we stopped
+        if messages_data:
+            if max_id is not None:
+                # Going backwards (backfill)
+                new_max_id = min(msg['id'] for msg in messages_data)
+                logger.info(f"[{channel_username}] Continuing backfill from message ID {new_max_id}")
+                remaining_messages = await fetch_messages_batch(
+                    channel_username,
+                    min_id=min_id,
+                    max_id=new_max_id,
+                    limit=limit - len(messages_data) if limit else None,
+                    retry_count=retry_count + 1
+                )
+            else:
+                # Going forward (new messages)
+                new_min_id = max(msg['id'] for msg in messages_data)
+                logger.info(f"[{channel_username}] Continuing forward from message ID {new_min_id}")
+                remaining_messages = await fetch_messages_batch(
+                    channel_username,
+                    min_id=new_min_id,
+                    max_id=max_id,
+                    limit=limit - len(messages_data) if limit else None,
+                    retry_count=retry_count + 1
+                )
+
+            # Merge and deduplicate
+            all_messages = messages_data + remaining_messages
+            unique_messages = {msg['id']: msg for msg in all_messages}
+            return list(unique_messages.values())
+        else:
+            # No messages collected yet, just retry with same parameters
+            return await fetch_messages_batch(
+                channel_username,
+                min_id=min_id,
+                max_id=max_id,
+                limit=limit,
+                retry_count=retry_count + 1
+            )
+
     except Exception as e:
-        logger.error(f"[{channel_username}] Error occurred: {e}", exc_info=True)
+        logger.error(f"[{channel_username}] Unexpected error occurred: {e}", exc_info=True)
+        if messages_data:
+            logger.info(f"[{channel_username}] Returning {len(messages_data)} partial messages collected before error")
+            return messages_data
         raise
 
     return messages_data
