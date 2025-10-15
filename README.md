@@ -13,6 +13,7 @@ An automated data pipeline for collecting, archiving, and analyzing posts from R
 - 🔁 Exponential backoff with FloodWaitError handling
 - 📝 Rotating logs with per-channel files
 - 🔄 Duplicate detection by message ID
+- 🤖 GitHub Actions automation (runs every 6 hours)
 - 🐳 Docker support for easy deployment
 
 ## Prerequisites
@@ -151,6 +152,117 @@ Make it executable:
 chmod +x reset.sh
 ./reset.sh
 ```
+
+## GitHub Actions Automation
+
+The project includes automated data collection using GitHub Actions that runs every 6 hours.
+
+### Setup GitHub Actions
+
+**1. Enable GitHub Actions**
+
+Go to your repository → Settings → Actions → General → Enable "Read and write permissions"
+
+**2. Add Repository Secrets**
+
+Go to your repository → Settings → Secrets and variables → Actions → New repository secret
+
+Add the following secrets:
+
+| Secret Name | Description | Example |
+|-------------|-------------|---------|
+| `API_ID` | Telegram API ID | `12345678` |
+| `API_HASH` | Telegram API Hash | `abcdef1234567890` |
+| `PHONE_NUMBER` | Your phone number | `+79261234567` |
+| `TARGET_CHANNELS` | Channels to collect | `channel1,channel2` |
+| `INITIAL_FETCH_LIMIT` | Messages per run | `1000` |
+| `TELEGRAM_SESSION` | Base64-encoded session file | See below |
+
+**3. Create Telegram Session**
+
+First, run the parser locally to create a session file:
+
+```bash
+python parser.py
+# Enter your Telegram code when prompted
+```
+
+Then encode the session file to base64:
+
+```bash
+# Linux/macOS
+base64 session/z_worlds_collector_session.session
+
+# Windows PowerShell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("session\z_worlds_collector_session.session"))
+```
+
+Copy the output and add it as `TELEGRAM_SESSION` secret.
+
+**4. Enable Workflow**
+
+The workflow will run automatically:
+- **Every 6 hours** (00:00, 06:00, 12:00, 18:00 UTC)
+- **Manually** via Actions tab → "Automated Data Collection" → "Run workflow"
+
+### Manual Trigger
+
+You can manually trigger data collection:
+
+1. Go to Actions tab
+2. Select "Automated Data Collection"
+3. Click "Run workflow"
+4. Optionally specify custom channels (comma-separated)
+
+### Monitoring
+
+**View workflow runs:**
+- Go to Actions tab to see all runs
+- Green ✅ = Success
+- Red ❌ = Failed (check logs)
+
+**Download artifacts:**
+- Each run saves logs and session backup
+- Go to specific run → Artifacts section
+- Download `logs-{run_number}` or `session-backup-{run_number}`
+
+### How It Works
+
+1. **Checkout** - Clones repository
+2. **Setup Python** - Installs Python 3.11
+3. **Install dependencies** - Runs `pip install -r requirements.txt`
+4. **Restore session** - Decodes session from secrets
+5. **Run parser** - Executes `python parser.py`
+6. **Save session** - Backs up session to artifacts
+7. **Commit changes** - Pushes new data to repository
+8. **Upload logs** - Saves logs as artifacts
+
+### Customizing Schedule
+
+Edit `.github/workflows/parser.yml`:
+
+```yaml
+schedule:
+  - cron: '0 */6 * * *'  # Every 6 hours
+  # Examples:
+  # - cron: '0 */12 * * *'  # Every 12 hours
+  # - cron: '0 0 * * *'     # Daily at midnight
+  # - cron: '0 9,21 * * *'  # Twice daily (9 AM, 9 PM)
+```
+
+### Troubleshooting
+
+**Issue: Session expired**
+- Re-run parser locally with 2FA code
+- Update `TELEGRAM_SESSION` secret with new session
+
+**Issue: Rate limits**
+- Reduce `INITIAL_FETCH_LIMIT` secret (try 500)
+- Increase schedule interval (every 12 hours instead of 6)
+
+**Issue: Large data files**
+- GitHub has 100MB file limit
+- Consider using Git LFS or cloud storage for large files
 
 ## Docker Usage
 
