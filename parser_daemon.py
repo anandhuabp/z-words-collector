@@ -429,7 +429,26 @@ async def main():
     logger.info(f"Backfill interval: {BACKFILL_INTERVAL/3600:.1f}h")
     logger.info("=" * 60)
 
-    await client.start(phone=PHONE_NUMBER)
+    # Check if session exists
+    if not SESSION_PATH.exists():
+        logger.error("=" * 60)
+        logger.error("ERROR: Telegram session file not found!")
+        logger.error(f"Expected location: {SESSION_PATH}")
+        logger.error("")
+        logger.error("You must create a Telegram session BEFORE running the daemon.")
+        logger.error("")
+        logger.error("To create a session:")
+        logger.error("1. Run locally: python create_session.py")
+        logger.error("2. Enter the code from Telegram")
+        logger.error("3. Transfer session file to server:")
+        logger.error(f"   scp session/*.session user@server:{SESSION_PATH.parent}/")
+        logger.error("")
+        logger.error("See DEPLOYMENT.md for detailed instructions.")
+        logger.error("=" * 60)
+        sys.exit(1)
+
+    # Connect using existing session (no phone parameter = no interactive auth)
+    await client.start()
     logger.info("Telegram client connected")
 
     # Create tasks for all channels

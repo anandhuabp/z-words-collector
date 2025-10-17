@@ -174,12 +174,17 @@ ssh-copy-id -i ~/.ssh/github_actions_deploy.pub user@your-server
 # 3. Configure GitHub Variables:
 # - SSH_HOST, SSH_USER, DEPLOY_PATH, TARGET_CHANNELS, INITIAL_FETCH_LIMIT, BACKFILL_LIMIT
 
-# 4. Create Telegram session and transfer to server
-python parser.py  # Enter Telegram code
+# 4. Create Telegram session locally (REQUIRED!)
+python create_session.py  # Enter Telegram code when prompted
+
+# 5. Transfer session to server
 scp session/z_worlds_collector_session.session user@server:/opt/z-words-collector/session/
 
-# 5. Push to main branch - automatic deployment!
+# 6. Push to main branch - automatic deployment!
 git push origin main
+
+# IMPORTANT: Session file must exist on server BEFORE first deployment!
+# The daemon will NOT start without a valid session file.
 ```
 
 **Features:**
@@ -231,6 +236,7 @@ docker-compose down
 z-words-collector/
 ├── parser_daemon.py       # Main daemon service (continuous monitoring)
 ├── parser.py              # One-time collection script (for testing/setup)
+├── create_session.py      # Telegram session creation script
 ├── requirements.txt       # Python dependencies
 ├── .env.example           # Environment variables template
 ├── .env                   # Your config (not in git)
@@ -385,6 +391,13 @@ backupCount=3                # Change to 5 for more backups
 ```
 
 ## Troubleshooting
+
+### Issue: "Telegram session file not found"
+**Solution:** You must create the session file BEFORE deploying:
+```bash
+python create_session.py  # Enter Telegram code
+scp session/*.session user@server:/opt/z-words-collector/session/
+```
 
 ### Issue: "database is locked"
 **Solution:** Delete `session/*.session-journal` and retry
