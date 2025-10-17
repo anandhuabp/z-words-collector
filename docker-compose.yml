@@ -1,8 +1,42 @@
+version: '3.8'
+
 services:
   parser:
     build: .
+    container_name: z-words-parser
     env_file:
       - .env
     volumes:
+      # Persistent data storage
       - ./data:/app/data
+      - ./logs:/app/logs
       - ./session:/app/session
+    # Run daemon for continuous monitoring and periodic backfill
+    command: python parser_daemon.py
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, sys; sys.path.insert(0, '/app'); from parser_daemon import shutdown_requested; exit(0 if not shutdown_requested else 1)"]
+      interval: 2m
+      timeout: 10s
+      retries: 3
+      start_period: 1m
+    # Resource limits (adjust based on your server)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - z-words-network
+
+networks:
+  z-words-network:
+    driver: bridge

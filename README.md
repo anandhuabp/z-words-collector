@@ -5,16 +5,18 @@ An automated data pipeline for collecting, archiving, and analyzing posts from R
 ## Features
 
 - 📥 Automated Telegram channel data collection
-- 💾 Incremental updates (fetches only new messages)
-- 🔄 Automatic backfill (downloads older messages gradually)
+- ⚡ **Daemon Mode** - Continuous monitoring for new posts (every 2 minutes)
+- 💾 Incremental updates (fetches only new messages in real-time)
+- 🔄 Periodic backfill (downloads older messages every 6 hours)
 - 🗜️ Data compression with gzip (5-10x space savings)
 - 📊 Metadata tracking (views, forwards, reactions)
 - 🔍 Gap detection (tracks deleted messages)
 - 🔁 Exponential backoff with FloodWaitError handling
 - 📝 Rotating logs with per-channel files
 - 🔄 Duplicate detection by message ID
-- 🤖 GitHub Actions automation (runs every 6 hours)
-- 🐳 Docker support for easy deployment
+- 🖥️ Server deployment with Docker Compose
+- 🚀 **GitHub Actions SSH Deployment** - Automated deployment via SSH
+- 🔒 Production-ready with health checks & auto-restart
 
 ## Prerequisites
 
@@ -153,116 +155,49 @@ chmod +x reset.sh
 ./reset.sh
 ```
 
-## GitHub Actions Automation
+## Server Deployment
 
-The project includes automated data collection using GitHub Actions that runs every 6 hours.
+The project runs as a **daemon service** with **continuous monitoring** for new posts and **periodic backfill** of old posts.
 
-### Setup GitHub Actions
+**👉 See [DEPLOYMENT.md](DEPLOYMENT.md) for complete server deployment guide.**
 
-**1. Enable GitHub Actions**
-
-Go to your repository → Settings → Actions → General → Enable "Read and write permissions"
-
-**2. Add Repository Secrets**
-
-Go to your repository → Settings → Secrets and variables → Actions → New repository secret
-
-Add the following secrets:
-
-| Secret Name | Description | Example |
-|-------------|-------------|---------|
-| `API_ID` | Telegram API ID | `12345678` |
-| `API_HASH` | Telegram API Hash | `abcdef1234567890` |
-| `PHONE_NUMBER` | Your phone number | `+79261234567` |
-| `TARGET_CHANNELS` | Channels to collect | `channel1,channel2` |
-| `INITIAL_FETCH_LIMIT` | Messages per run | `1000` |
-| `TELEGRAM_SESSION` | Base64-encoded session file | See below |
-
-**3. Create Telegram Session**
-
-First, run the parser locally to create a session file:
+### Quick Start (GitHub Actions SSH Deployment - Recommended)
 
 ```bash
-python parser.py
-# Enter your Telegram code when prompted
+# 1. Generate SSH key for deployment
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/github_actions_deploy
+ssh-copy-id -i ~/.ssh/github_actions_deploy.pub user@your-server
+
+# 2. Configure GitHub Secrets:
+# - SSH_PRIVATE_KEY, API_ID, API_HASH, PHONE_NUMBER
+
+# 3. Configure GitHub Variables:
+# - SSH_HOST, SSH_USER, DEPLOY_PATH, TARGET_CHANNELS, INITIAL_FETCH_LIMIT, BACKFILL_LIMIT
+
+# 4. Create Telegram session and transfer to server
+python parser.py  # Enter Telegram code
+scp session/z_worlds_collector_session.session user@server:/opt/z-words-collector/session/
+
+# 5. Push to main branch - automatic deployment!
+git push origin main
 ```
 
-Then encode the session file to base64:
+**Features:**
+- ⚡ **Continuous monitoring** - Checks for new posts every 2 minutes
+- 🔄 **Periodic backfill** - Downloads old posts every 6 hours
+- 🚀 **Automated deployment** - Push to GitHub triggers SSH deployment
+- 🔄 Auto-restart on failure
+- 📝 Persistent logs and data
+- 🏥 Health checks
+- 💾 Data stored on your server (not in git)
 
-```bash
-# Linux/macOS
-base64 session/z_worlds_collector_session.session
-
-# Windows PowerShell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes("session\z_worlds_collector_session.session"))
-```
-
-Copy the output and add it as `TELEGRAM_SESSION` secret.
-
-**4. Enable Workflow**
-
-The workflow will run automatically:
-- **Every 6 hours** (00:00, 06:00, 12:00, 18:00 UTC)
-- **Manually** via Actions tab → "Automated Data Collection" → "Run workflow"
-
-### Manual Trigger
-
-You can manually trigger data collection:
-
-1. Go to Actions tab
-2. Select "Automated Data Collection"
-3. Click "Run workflow"
-4. Optionally specify custom channels (comma-separated)
-
-### Monitoring
-
-**View workflow runs:**
-- Go to Actions tab to see all runs
-- Green ✅ = Success
-- Red ❌ = Failed (check logs)
-
-**Download artifacts:**
-- Each run saves logs and session backup
-- Go to specific run → Artifacts section
-- Download `logs-{run_number}` or `session-backup-{run_number}`
-
-### How It Works
-
-1. **Checkout** - Clones repository
-2. **Setup Python** - Installs Python 3.11
-3. **Install dependencies** - Runs `pip install -r requirements.txt`
-4. **Restore session** - Decodes session from secrets
-5. **Run parser** - Executes `python parser.py`
-6. **Save session** - Backs up session to artifacts
-7. **Commit changes** - Pushes new data to repository
-8. **Upload logs** - Saves logs as artifacts
-
-### Customizing Schedule
-
-Edit `.github/workflows/parser.yml`:
-
-```yaml
-schedule:
-  - cron: '0 */6 * * *'  # Every 6 hours
-  # Examples:
-  # - cron: '0 */12 * * *'  # Every 12 hours
-  # - cron: '0 0 * * *'     # Daily at midnight
-  # - cron: '0 9,21 * * *'  # Twice daily (9 AM, 9 PM)
-```
-
-### Troubleshooting
-
-**Issue: Session expired**
-- Re-run parser locally with 2FA code
-- Update `TELEGRAM_SESSION` secret with new session
-
-**Issue: Rate limits**
-- Reduce `INITIAL_FETCH_LIMIT` secret (try 500)
-- Increase schedule interval (every 12 hours instead of 6)
-
-**Issue: Large data files**
-- GitHub has 100MB file limit
-- Consider using Git LFS or cloud storage for large files
+**See [DEPLOYMENT.md](DEPLOYMENT.md) for:**
+- GitHub Actions SSH deployment setup
+- Manual server deployment
+- Server requirements
+- Configuration options
+- Monitoring & troubleshooting
+- Backup strategies
 
 ## Docker Usage
 
@@ -294,12 +229,17 @@ docker-compose down
 
 ```
 z-words-collector/
-├── parser.py              # Main collection script
+├── parser_daemon.py       # Main daemon service (continuous monitoring)
+├── parser.py              # One-time collection script (for testing/setup)
 ├── requirements.txt       # Python dependencies
 ├── .env.example           # Environment variables template
 ├── .env                   # Your config (not in git)
 ├── Dockerfile             # Docker configuration
 ├── docker-compose.yml     # Docker orchestration
+│
+├── .github/
+│   └── workflows/
+│       └── deploy.yml     # GitHub Actions SSH deployment
 │
 ├── session/               # Telegram session files (auto-created)
 │   └── *.session
@@ -310,8 +250,8 @@ z-words-collector/
 │       └── YYYY-MM-DD.json.gz     # Daily data files
 │
 ├── logs/                  # Log files (auto-created)
-│   ├── parser.log                 # Main log file
-│   ├── parser.log.1               # Rotated backup logs
+│   ├── daemon.log                 # Main daemon log file
+│   ├── daemon.log.1               # Rotated backup logs
 │   └── channel_name.log           # Per-channel logs
 │
 └── local_docs/            # Project documentation
@@ -432,14 +372,14 @@ cat logs/dva_majors.log
 
 ### Changing Log Settings
 
-To modify rotation settings, edit `parser.py`:
+To modify rotation settings, edit `parser_daemon.py`:
 
 ```python
-# Main log: lines 62-66
+# Find the logging configuration section
 maxBytes=10 * 1024 * 1024,  # Change to 50 * 1024 * 1024 for 50MB
 backupCount=5                # Change to 10 for more backups
 
-# Channel logs: lines 99-103
+# For channel logs
 maxBytes=5 * 1024 * 1024,   # Change to 10 * 1024 * 1024 for 10MB
 backupCount=3                # Change to 5 for more backups
 ```
